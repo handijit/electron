@@ -71,9 +71,12 @@ area.
 import { join } from "node:path";
 import { THEME_BOOT_SCRIPT_HASH } from "@handijit/design";
 import { startApp } from "@handijit/electron/main";
+import { app } from "electron";
 import { contract } from "../shared/contract";
 
-const context = await startApp({
+// No top-level `await`: Electron emits `ready` only after an ES module main has finished
+// evaluating, so awaiting the start-up here would wait forever.
+startApp({
   contract,
   handlers: ({ emitter, logger }) => ({
     "notes:list": () => database.listNotes(),
@@ -101,8 +104,13 @@ const context = await startApp({
       url.hostname === "open" ? { noteId: url.pathname.slice(1) } : null,
     onLink: ({ noteId }) => openNote(noteId),
   },
-});
-// `null`: another instance is running; it was focused and got this launch's link.
+})
+  // Resolves to the app context, or to `null` when another instance is running (it was focused
+  // and got this launch's link).
+  .catch((error: unknown) => {
+    console.error("The program could not start", error);
+    app.exit(1);
+  });
 ```
 
 `startApp` does the start-up in the one order that is safe: single-instance lock → `app://`

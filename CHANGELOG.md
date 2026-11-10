@@ -7,6 +7,14 @@ and the package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-10
+
+### Fixed
+
+- The quick start no longer awaits `startApp` at the top level of an ES module main: Electron
+  emits `ready` only after the main module has finished evaluating, so the program hung at
+  start-up. It now calls `startApp(...).catch(...)`.
+
 ## [1.0.0] - 2026-11-10
 
 First release: the application core shared by Han Dijit's Electron desktop
@@ -45,5 +53,6 @@ modules and CommonJS.
   `onThemeChange` and `applyTheme`: the theme owned by main and applied before
   the first frame, compatible with the boot script of `@handijit/design`.
 
-[Unreleased]: https://github.com/handijit/electron/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/handijit/electron/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/handijit/electron/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/handijit/electron/releases/tag/v1.0.0
