@@ -7,6 +7,27 @@ and the package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-10
+
+### Fixed
+
+- A SIGTERM no longer leaves the app running without a window on macOS. `startApp` holds the
+  first `before-quit` until the log is on disk and then quits again; that second `app.quit()`
+  ran in the flush's promise reaction. A quit that Electron starts itself (a SIGTERM) emits
+  `before-quit` from native code and drains microtasks before it returns, so the second quit
+  ran inside the held one and was undone when that one returned: the windows closed,
+  `window-all-closed` kept the app open (as on macOS it should), `will-quit` never came and
+  the process kept its ports and files. The second quit is now asked on the next turn
+  (`setImmediate`). A quit asked from JavaScript (`app.quit()`, Playwright's `close()`) was
+  not affected.
+
+### Tests
+
+- The real-Electron smoke test has a fourth launch on macOS (and any POSIX system) that ends
+  the app with one SIGTERM and checks that it exits without the SIGKILL fallback, that
+  `will-quit` fires and that the lines logged before the signal are on disk. It is skipped on
+  Windows, where Node's `kill()` is `TerminateProcess` and no quit runs.
+
 ## [1.1.0] - 2026-11-10
 
 ### Fixed
