@@ -263,7 +263,12 @@ const startApp = async <C extends Contract, L = never>({
     event.preventDefault();
     flushing ??= logger.flush().finally(() => {
       isFlushed = true;
-      app.quit();
+      // Asked again on a later turn, never from a microtask: a quit Electron starts itself (a
+      // SIGTERM) emits before-quit from native code and drains microtasks before it returns, so
+      // a quit asked there would run inside the held one and be undone when that one returns.
+      // The windows would close without quitting and, with window-all-closed kept open on
+      // macOS, the process would stay.
+      setImmediate(() => app.quit());
     });
   });
 

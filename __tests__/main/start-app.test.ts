@@ -1502,6 +1502,7 @@ describe("startApp", () => {
 
       written.resolve();
       await tick();
+      await tick();
 
       expect(app.quit).toHaveBeenCalledTimes(1);
 
@@ -1536,8 +1537,29 @@ describe("startApp", () => {
 
       written.resolve();
       await tick();
+      await tick();
 
       expect(flush).toHaveBeenCalledTimes(1);
+      expect(app.quit).toHaveBeenCalledTimes(1);
+    });
+
+    test("sentinel: should ask for the quit again on a later turn, never from the flush's microtask", async () => {
+      // A SIGTERM emits before-quit from native code, which drains microtasks before it
+      // returns: a quit asked from one runs inside the held quit and is undone (the windows
+      // close, the process stays on macOS).
+      const context = await start();
+      const written = createDeferred();
+      vi.spyOn(context.logger, "flush").mockReturnValue(written.promise);
+
+      app.emit("before-quit", { preventDefault: vi.fn() });
+      written.resolve();
+      for (let index = 0; index < 10; index += 1) await Promise.resolve();
+
+      expect(app.quit).not.toHaveBeenCalled();
+
+      await tick();
+      await tick();
+
       expect(app.quit).toHaveBeenCalledTimes(1);
     });
 
