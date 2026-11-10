@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   applyTheme,
@@ -7,7 +7,7 @@ import {
   setThemePreference,
   syncTheme,
 } from "../../lib/renderer/theme";
-import type { ThemeState } from "../../lib/types";
+import type { ThemeState, Unsubscribe } from "../../lib/types";
 
 type Listener = (state: ThemeState) => void;
 
@@ -52,6 +52,18 @@ const settle = async (): Promise<void> => {
   await Promise.resolve();
   await Promise.resolve();
 };
+
+// Every sync a test starts is stopped after it, so that its guard cannot touch the next test.
+const running: Unsubscribe[] = [];
+const sync = (): Unsubscribe => {
+  const stop = syncTheme();
+  running.push(stop);
+  return stop;
+};
+
+afterEach(() => {
+  for (const stop of running.splice(0)) stop();
+});
 
 beforeEach(() => {
   document.documentElement.removeAttribute("data-theme");
@@ -140,7 +152,7 @@ describe("syncTheme", () => {
   test("should apply the theme main resolved", async () => {
     stubBridge(Promise.resolve(DARK));
 
-    syncTheme();
+    sync();
     expect(attribute()).toBeNull();
     await settle();
 
@@ -149,7 +161,7 @@ describe("syncTheme", () => {
 
   test("should follow every later change", async () => {
     const bridge = stubBridge(Promise.resolve(DARK));
-    syncTheme();
+    sync();
     await settle();
 
     bridge.emit(LIGHT);
@@ -163,7 +175,7 @@ describe("syncTheme", () => {
     localStorage.setItem("unrelated", "kept");
     stubBridge();
 
-    syncTheme();
+    sync();
 
     expect(localStorage.getItem("hd-theme")).toBeNull();
     expect(localStorage.getItem("unrelated")).toBe("kept");
@@ -175,7 +187,7 @@ describe("syncTheme", () => {
     });
     stubBridge(Promise.resolve(DARK));
 
-    expect(() => syncTheme()).not.toThrow();
+    expect(() => sync()).not.toThrow();
     await settle();
 
     expect(attribute()).toBe("dark");
@@ -188,7 +200,7 @@ describe("syncTheme", () => {
         answer = resolve;
       })
     );
-    syncTheme();
+    sync();
 
     bridge.emit(LIGHT);
     answer(DARK);
@@ -205,7 +217,7 @@ describe("syncTheme", () => {
       })
     );
 
-    const stop = syncTheme();
+    const stop = sync();
     expect(bridge.unsubscribe).not.toHaveBeenCalled();
     stop();
     answer(DARK);
@@ -221,13 +233,115 @@ describe("syncTheme", () => {
     window.addEventListener("unhandledrejection", unhandled);
     stubBridge(Promise.reject(new Error("[UNTRUSTED_SENDER] core-theme:get")));
 
-    syncTheme();
+    sync();
     await settle();
     await new Promise((resolve) => setTimeout(resolve, 0));
     window.removeEventListener("unhandledrejection", unhandled);
 
     expect(attribute()).toBe("light");
     expect(unhandled).not.toHaveBeenCalled();
+  });
+
+  test("sentinel: should undo a write that disagrees with main, like the boot script following an emulated prefers-color-scheme", async () => {
+    stubBridge(Promise.resolve(DARK));
+    const stop = sync();
+    await settle();
+
+    document.documentElement.setAttribute("data-theme", "light");
+    await settle();
+
+    expect(attribute()).toBe("dark");
+    stop();
+  });
+
+  test("should keep guarding the theme main announced last", async () => {
+    const bridge = stubBridge(Promise.resolve(DARK));
+    const stop = sync();
+    await settle();
+
+    bridge.emit(LIGHT);
+    document.documentElement.setAttribute("data-theme", "dark");
+    await settle();
+
+    expect(attribute()).toBe("light");
+    stop();
+  });
+
+  test("should not rewrite an attribute that already holds main's theme", async () => {
+    document.documentElement.setAttribute("data-theme", "dark");
+    const writes = vi.spyOn(Element.prototype, "setAttribute");
+    stubBridge(Promise.resolve(DARK));
+
+    sync();
+    await settle();
+
+    expect(writes).not.toHaveBeenCalled();
+    expect(attribute()).toBe("dark");
+  });
+
+  test("should leave the boot script's theme alone until main has answered", async () => {
+    stubBridge(new Promise<ThemeState>(() => undefined));
+    const stop = sync();
+
+    document.documentElement.setAttribute("data-theme", "light");
+    await settle();
+
+    expect(attribute()).toBe("light");
+    stop();
+  });
+
+  test.each([
+    [
+      "the window is focused",
+      (): void => void window.dispatchEvent(new Event("focus")),
+    ],
+    [
+      "the page is shown again",
+      (): void => void window.dispatchEvent(new Event("pageshow")),
+    ],
+    [
+      "the page becomes visible",
+      (): void => void document.dispatchEvent(new Event("visibilitychange")),
+    ],
+  ])("should ask main again when %s", async (_name, trigger) => {
+    const bridge = stubBridge(Promise.resolve(LIGHT));
+    const stop = sync();
+    await settle();
+    expect(attribute()).toBe("light");
+    bridge.get.mockReturnValue(Promise.resolve(DARK));
+
+    trigger();
+    await settle();
+
+    expect(bridge.get).toHaveBeenCalledTimes(2);
+    expect(attribute()).toBe("dark");
+    stop();
+  });
+
+  test("should not ask main while the page is hidden", async () => {
+    const bridge = stubBridge(Promise.resolve(DARK));
+    const stop = sync();
+    await settle();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(bridge.get).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  test("should stop guarding and asking once stopped", async () => {
+    const bridge = stubBridge(Promise.resolve(DARK));
+    const stop = sync();
+    await settle();
+
+    stop();
+    document.documentElement.setAttribute("data-theme", "light");
+    window.dispatchEvent(new Event("focus"));
+    await settle();
+
+    expect(attribute()).toBe("light");
+    expect(bridge.get).toHaveBeenCalledTimes(1);
   });
 
   test("should fail loudly without a bridge", () => {
