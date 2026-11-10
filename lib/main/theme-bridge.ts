@@ -17,6 +17,12 @@ type ThemeBridge = {
   readonly getState: () => ThemeState;
   /** Persists a preference and applies it to the whole app. */
   readonly setPreference: (preference: ThemePreference) => Promise<ThemeState>;
+  /**
+   * Applies the preference to `nativeTheme` again and tells every listener the state, changed
+   * or not, so that every window re-applies it. For the moments the system may have reset the
+   * appearance behind the app's back: waking from sleep, unlocking the screen.
+   */
+  readonly reapply: () => void;
   /** Listens to changes of the state. Returns the function that stops listening. */
   readonly onChange: (listener: (state: ThemeState) => void) => Unsubscribe;
   /** Stops following the operating system. */
@@ -47,6 +53,10 @@ const createThemeBridge = (store: ThemePreferenceStore): ThemeBridge => {
   });
 
   let last = getState();
+  const tell = (state: ThemeState): void => {
+    last = state;
+    for (const listener of [...listeners]) listener(state);
+  };
   const notify = (): void => {
     const next = getState();
     // nativeTheme reports "updated" for more than the colour scheme (contrast, transparency).
@@ -56,8 +66,7 @@ const createThemeBridge = (store: ThemePreferenceStore): ThemeBridge => {
     ) {
       return;
     }
-    last = next;
-    for (const listener of [...listeners]) listener(next);
+    tell(next);
   };
   nativeTheme.on("updated", notify);
 
@@ -74,6 +83,10 @@ const createThemeBridge = (store: ThemePreferenceStore): ThemeBridge => {
       notify();
       await store.set(next);
       return getState();
+    },
+    reapply: () => {
+      nativeTheme.themeSource = preference;
+      tell(getState());
     },
     onChange: (listener) => {
       listeners.add(listener);

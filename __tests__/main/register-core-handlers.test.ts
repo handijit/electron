@@ -69,6 +69,7 @@ const createTheme = () => {
         changeListeners.delete(listener);
       };
     }),
+    reapply: vi.fn<ThemeBridge["reapply"]>(),
     dispose: vi.fn<ThemeBridge["dispose"]>(),
   };
   const change = (state: ThemeState): void => {

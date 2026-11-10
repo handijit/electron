@@ -156,6 +156,7 @@ const mocks = await vi.hoisted(async () => {
 
   const app = new FakeApp();
   const nativeTheme = new FakeNativeTheme();
+  const powerMonitor = new EventEmitter();
   const session = { defaultSession: createSession("defaultSession") };
   const protocol = {
     registerSchemesAsPrivileged: vi.fn<(schemes: unknown) => void>(() => {
@@ -194,6 +195,7 @@ const mocks = await vi.hoisted(async () => {
     state.protocolHandlers.clear();
     app.removeAllListeners();
     nativeTheme.removeAllListeners();
+    powerMonitor.removeAllListeners();
     session.defaultSession = createSession("defaultSession");
     for (const mock of [
       app.quit,
@@ -221,6 +223,7 @@ const mocks = await vi.hoisted(async () => {
       ipcMain,
       nativeTheme,
       net,
+      powerMonitor,
       protocol,
       session,
       shell,
@@ -598,6 +601,36 @@ describe("startApp", () => {
         resolved: "dark",
       });
     });
+  });
+
+  describe("the theme after sleep", () => {
+    test.each(["resume", "unlock-screen"])(
+      "sentinel: should put the stored preference back on %s and tell every window",
+      async (event) => {
+        mkdirSync(join(root, "userData"));
+        writeFileSync(
+          join(root, "userData", "theme.json"),
+          JSON.stringify({ theme: "dark" })
+        );
+        const context = await start();
+        const window = firstWindow();
+        // The system reset the appearance while the computer slept.
+        mocks.state.themeSource = "system";
+        mocks.calls.length = 0;
+
+        mocks.electron.powerMonitor.emit(event);
+
+        expect(mocks.calls).toContain("nativeTheme.themeSource=dark");
+        expect(context.theme.getState()).toEqual({
+          preference: "dark",
+          resolved: "dark",
+        });
+        expect(window.webContents.send).toHaveBeenCalledWith(
+          "core-theme:changed",
+          { preference: "dark", resolved: "dark" }
+        );
+      }
+    );
   });
 
   describe("the window", () => {

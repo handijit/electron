@@ -294,6 +294,46 @@ describe("createThemeBridge", () => {
     });
   });
 
+  describe("reapply", () => {
+    test("should apply the preference to nativeTheme again", () => {
+      const bridge = createThemeBridge(createStore("dark"));
+      // The system reset the appearance behind the app's back.
+      mocks.state.source = "system";
+
+      bridge.reapply();
+
+      expect(mocks.state.assignments).toEqual(["dark", "dark"]);
+      expect(bridge.getState()).toEqual({
+        preference: "dark",
+        resolved: "dark",
+      });
+    });
+
+    test("should tell the listeners even when nothing changed, so every window re-applies it", () => {
+      const bridge = createThemeBridge(createStore("dark"));
+      const listener = vi.fn();
+      bridge.onChange(listener);
+
+      bridge.reapply();
+
+      expect(listener).toHaveBeenCalledExactlyOnceWith({
+        preference: "dark",
+        resolved: "dark",
+      });
+    });
+
+    test("should keep a later identical update quiet", () => {
+      const bridge = createThemeBridge(createStore("system"));
+      const listener = vi.fn();
+      bridge.onChange(listener);
+
+      bridge.reapply();
+      emitUpdated();
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("onChange", () => {
     test("should stop calling a listener that unsubscribed, and tolerate a second call", () => {
       const bridge = createThemeBridge(createStore("system"));

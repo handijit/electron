@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 
-import { app, BrowserWindow, session } from "electron";
+import { app, BrowserWindow, powerMonitor, session } from "electron";
 import { z } from "zod";
 
 import type { Contract, ThemePreference } from "../types";
@@ -202,6 +202,10 @@ const startApp = async <C extends Contract, L = never>({
   );
 
   const theme = createThemeBridge(themeStore ?? (await createThemeFileStore()));
+  // The system may reset the appearance while it sleeps or is locked; the preference is put
+  // back and every window re-applies it.
+  powerMonitor.on("resume", theme.reapply);
+  powerMonitor.on("unlock-screen", theme.reapply);
   const ipcOptions = {
     policy,
     onError: (error: Error): void => logger.warn(error.message),
