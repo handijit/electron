@@ -14,7 +14,13 @@ const {
 const { join } = require("node:path");
 const { isDeepStrictEqual } = require("node:util");
 
-const { app, BrowserWindow, nativeTheme, net } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  nativeTheme,
+  net,
+  powerMonitor,
+} = require("electron");
 
 const DIRECTORY = process.env.SMOKE_DIR;
 const OUT = process.env.SMOKE_OUT;
@@ -383,6 +389,32 @@ const scenario = async ({ core, shared, design, z }) => {
     nativeTheme.themeSource === "light",
     nativeTheme.themeSource
   );
+  // The design boot script follows prefers-color-scheme, which DevTools emulation (Playwright
+  // does it to every page) changes without main changing: the page must stay in main's theme.
+  page.debugger.attach("1.3");
+  await page.debugger.sendCommand("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-color-scheme", value: "dark" }],
+  });
+  await sleep(300);
+  const emulated = await evaluate("window.__smoke.theme()");
+  check(
+    "theme: an emulated prefers-color-scheme does not override main's theme",
+    isDeepStrictEqual(emulated, { attribute: "light", prefersDark: true }),
+    emulated
+  );
+  page.debugger.detach();
+  // After sleep the preference is put back and announced again.
+  nativeTheme.themeSource = "dark";
+  powerMonitor.emit("resume");
+  await until(
+    async () =>
+      isDeepStrictEqual(await evaluate("window.__smoke.theme()"), {
+        attribute: "light",
+        prefersDark: false,
+      }) && nativeTheme.themeSource === "light",
+    "theme: waking from sleep puts the preference back"
+  );
+  check("theme: waking from sleep puts the preference back", true);
   const stored = JSON.parse(
     readFileSync(join(app.getPath("userData"), "theme.json"), "utf8")
   );
