@@ -552,18 +552,34 @@ const run = (dependencies) => {
 
   scenario(dependencies)
     .then(
-      (context) => context !== null,
+      (context) => ({ isPrimary: context !== null, context }),
       (error) => {
         check(
           "the scenario ran to its end",
           false,
           error.stack ?? String(error)
         );
-        return true;
+        return { isPrimary: true, context: undefined };
       }
     )
-    .then((isPrimary) => {
+    .then(({ isPrimary, context }) => {
       if (!isPrimary) return;
+      const isQuitBySignal = process.env.SMOKE_QUIT_BY === "signal";
+      if (isQuitBySignal) {
+        // What the quit that a SIGTERM starts reaches: smoke reads it after the exit.
+        const quit = { beforeQuit: 0, willQuit: false };
+        const record = () =>
+          writeFileSync(join(DIRECTORY, "quit.json"), JSON.stringify(quit));
+        app.on("before-quit", () => {
+          quit.beforeQuit += 1;
+          record();
+        });
+        app.on("will-quit", () => {
+          quit.willQuit = true;
+          record();
+        });
+        context?.logger.info("smoke: the last line before the signal");
+      }
       writeFileSync(
         join(DIRECTORY, "result.json"),
         JSON.stringify({
@@ -574,6 +590,11 @@ const run = (dependencies) => {
           checks,
         })
       );
+      if (isQuitBySignal) {
+        // scripts/electron-smoke.mjs sends the SIGTERM once it reads this line.
+        process.stdout.write("smoke: waiting for SIGTERM\n");
+        return;
+      }
       // A normal quit: it also proves that the log flush on before-quit lets the app end.
       app.quit();
     });

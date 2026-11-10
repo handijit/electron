@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -119,7 +120,9 @@ const startDevServer = () =>
     server.listen(0, "127.0.0.1", () => done(server));
   });
 
-const launch = async ({ name, entry, devServerUrl }) => {
+const SIGNAL_GRACE_MS = 15_000;
+
+const launch = async ({ name, entry, devServerUrl, quitBy = "app" }) => {
   const directory = mkdtempSync(join(tmpdir(), "handijit-electron-smoke-"));
   // A stored preference from an earlier run: the page has to start in it, without a flash.
   mkdirSync(join(directory, "user-data"), { recursive: true });
@@ -138,6 +141,7 @@ const launch = async ({ name, entry, devServerUrl }) => {
   delete environment.ELECTRON_RENDERER_URL;
   if (devServerUrl !== undefined)
     environment.ELECTRON_RENDERER_URL = devServerUrl;
+  if (quitBy === "signal") environment.SMOKE_QUIT_BY = "signal";
 
   const child = spawn(electronBinary, [join(APP, entry)], {
     cwd: ROOT,
@@ -148,14 +152,36 @@ const launch = async ({ name, entry, devServerUrl }) => {
   child.stdout.on("data", (chunk) => (output += chunk));
   child.stderr.on("data", (chunk) => (output += chunk));
 
+  // quitBy "signal": the app waits after its checks; one SIGTERM has to end it, through the
+  // whole quit (before-quit, the log flush, will-quit), well before the SIGKILL fallback.
+  let signalledAt;
+  let killedAfterSignal = false;
+  if (quitBy === "signal") {
+    const sendSignal = () => {
+      if (
+        signalledAt !== undefined ||
+        !output.includes("smoke: waiting for SIGTERM")
+      )
+        return;
+      signalledAt = Date.now();
+      child.kill("SIGTERM");
+      setTimeout(() => {
+        if (child.exitCode !== null || child.signalCode !== null) return;
+        killedAfterSignal = true;
+        child.kill("SIGKILL");
+      }, SIGNAL_GRACE_MS).unref();
+    };
+    child.stdout.on("data", sendSignal);
+  }
+
   const exit = await new Promise((done) => {
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       done({ code: null, timedOut: true });
     }, TIMEOUT_MS);
-    child.once("exit", (code) => {
+    child.once("exit", (code, signal) => {
       clearTimeout(timer);
-      done({ code, timedOut: false });
+      done({ code, signal, timedOut: false });
     });
   });
 
@@ -164,13 +190,47 @@ const launch = async ({ name, entry, devServerUrl }) => {
     ? JSON.parse(readFileSync(resultFile, "utf8"))
     : { checks: [] };
   const checks = [...result.checks];
-  checks.push({
-    name: "the app wrote its result and quit normally",
-    ok: existsSync(resultFile) && exit.code === 0,
-    detail: exit.timedOut
-      ? `killed after ${TIMEOUT_MS} ms`
-      : `exit code ${exit.code}`,
-  });
+  if (quitBy === "signal") {
+    const quitFile = join(directory, "quit.json");
+    const quit = existsSync(quitFile)
+      ? JSON.parse(readFileSync(quitFile, "utf8"))
+      : null;
+    const log = readLogs(join(directory, "logs"));
+    checks.push(
+      {
+        name: "SIGTERM: the app quits on the first signal",
+        ok:
+          existsSync(resultFile) &&
+          signalledAt !== undefined &&
+          !killedAfterSignal &&
+          !exit.timedOut,
+        detail: {
+          signalled: signalledAt !== undefined,
+          killedAfterSignal,
+          exit,
+          afterMs: signalledAt === undefined ? null : Date.now() - signalledAt,
+        },
+      },
+      {
+        name: "SIGTERM: the quit runs to will-quit, through one held before-quit",
+        ok: quit?.willQuit === true && quit.beforeQuit >= 1,
+        detail: quit,
+      },
+      {
+        name: "SIGTERM: the lines logged before the signal are on disk",
+        ok: log.includes("smoke: the last line before the signal"),
+        detail: log.slice(-500),
+      }
+    );
+  } else {
+    checks.push({
+      name: "the app wrote its result and quit normally",
+      ok: existsSync(resultFile) && exit.code === 0,
+      detail: exit.timedOut
+        ? `killed after ${TIMEOUT_MS} ms`
+        : `exit code ${exit.code}`,
+    });
+  }
   rmSync(directory, { recursive: true, force: true });
 
   const failed = checks.filter(({ ok }) => !ok);
@@ -182,11 +242,29 @@ const launch = async ({ name, entry, devServerUrl }) => {
   return { ...result, total: checks.length, failed: failed.length };
 };
 
+/** Every log file of a run, joined; empty when there are none. */
+const readLogs = (folder) =>
+  existsSync(folder)
+    ? readdirSync(folder)
+        .map((file) => readFileSync(join(folder, file), "utf8"))
+        .join("")
+    : "";
+
 const server = await startDevServer();
 const runs = [];
 try {
   runs.push(await launch({ name: "esm", entry: "main.mjs" }));
   runs.push(await launch({ name: "cjs", entry: "main.cjs" }));
+  // On Windows a SIGTERM from Node is TerminateProcess: no quit runs that could be checked.
+  if (process.platform === "win32") {
+    console.log(
+      "skip [sigterm] Windows has no SIGTERM; Node's kill() ends the process at once"
+    );
+  } else {
+    runs.push(
+      await launch({ name: "sigterm", entry: "main.mjs", quitBy: "signal" })
+    );
+  }
   runs.push(
     await launch({
       name: "dev",
