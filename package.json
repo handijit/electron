@@ -1,0 +1,146 @@
+{
+  "name": "@handijit/electron",
+  "version": "1.0.0",
+  "description": "Application core for Han Dijit's Electron desktop programs: a secure BrowserWindow, the app:// protocol with a strict CSP, a typed and validated IPC contract, single-instance lock, settings and secret stores, a redacting logger and a theme bridge.",
+  "author": "Ahmet ilhan <ahmetilhan.dev@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/handijit/electron.git"
+  },
+  "homepage": "https://github.com/handijit/electron#readme",
+  "bugs": {
+    "url": "https://github.com/handijit/electron/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./build/index.cjs",
+  "module": "./build/index.mjs",
+  "types": "./build/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./build/index.d.mts",
+        "default": "./build/index.mjs"
+      },
+      "require": {
+        "types": "./build/index.d.ts",
+        "default": "./build/index.cjs"
+      },
+      "default": "./build/index.mjs"
+    },
+    "./main": {
+      "import": {
+        "types": "./build/main.d.mts",
+        "default": "./build/main.mjs"
+      },
+      "require": {
+        "types": "./build/main.d.ts",
+        "default": "./build/main.cjs"
+      },
+      "default": "./build/main.mjs"
+    },
+    "./preload": {
+      "import": {
+        "types": "./build/preload.d.mts",
+        "default": "./build/preload.mjs"
+      },
+      "require": {
+        "types": "./build/preload.d.ts",
+        "default": "./build/preload.cjs"
+      },
+      "default": "./build/preload.mjs"
+    },
+    "./renderer": {
+      "import": {
+        "types": "./build/renderer.d.mts",
+        "default": "./build/renderer.mjs"
+      },
+      "require": {
+        "types": "./build/renderer.d.ts",
+        "default": "./build/renderer.cjs"
+      },
+      "default": "./build/renderer.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "main": [
+        "./build/main.d.ts"
+      ],
+      "preload": [
+        "./build/preload.d.ts"
+      ],
+      "renderer": [
+        "./build/renderer.d.ts"
+      ]
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "build",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "sh ./scripts/prod-build.sh",
+    "dev": "sh ./scripts/dev-build.sh",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run --coverage",
+    "size": "node ./scripts/report-size.mjs",
+    "lint:package": "publint && attw --pack .",
+    "test:electron": "node ./scripts/electron-smoke.mjs",
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run build && npm run size && npm run lint:package",
+    "prepublishOnly": "npm run verify"
+  },
+  "keywords": [
+    "electron",
+    "electron-security",
+    "ipc",
+    "typed-ipc",
+    "contextbridge",
+    "content-security-policy",
+    "custom-protocol",
+    "safestorage",
+    "single-instance",
+    "settings",
+    "logger",
+    "dark-mode",
+    "handijit"
+  ],
+  "private": false,
+  "peerDependencies": {
+    "electron": ">=43.0.0 <46.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@eslint/js": "^10.0.1",
+    "@handijit/design": "^1.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "@rollup/plugin-typescript": "^12.3.1",
+    "@types/node": "^24.9.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "@vitest/coverage-v8": "^5.1.0",
+    "electron": "^45.2.3",
+    "eslint": "^10.14.0",
+    "eslint-config-prettier": "^10.1.8",
+    "jsdom": "^31.0.0",
+    "prettier": "^3.9.10",
+    "publint": "^0.3.25",
+    "rollup": "^4.68.2",
+    "rollup-plugin-dts": "^6.5.1",
+    "tslib": "^2.9.1",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^5.1.0",
+    "zod": "^4.6.7"
+  }
+}

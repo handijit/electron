@@ -1,0 +1,15 @@
+node_modules/
+build/
+coverage/
+*.tgz
+*.log
+npm-debug.log*
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.env
+.env.local
+e2e/out/
