@@ -7,6 +7,25 @@ and the package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-10
+
+### Fixed
+
+- A window could fall back to the light theme while main held "dark": the `@handijit/design`
+  boot script keeps listening to `prefers-color-scheme` and rewrote `<html data-theme>` when
+  that media query changed without main's theme changing (DevTools media emulation, which
+  Playwright applies to every page it attaches to, with `_electron` and `connectOverCDP`
+  alike), and main had nothing new to announce, so the page stayed wrong. `syncTheme` now
+  undoes any write of the attribute that disagrees with main before the next paint, asks main
+  again when the window is focused or shown, and runs once per page (a second call stops the
+  first).
+
+### Added
+
+- `ThemeBridge.reapply()`: applies the preference to `nativeTheme` again and announces the
+  state to every window, changed or not. `startApp` calls it on `powerMonitor` `resume` and
+  `unlock-screen`.
+
 ## [1.0.1] - 2026-11-10
 
 ### Fixed

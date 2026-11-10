@@ -1,6 +1,6 @@
 {
   "name": "@handijit/electron",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Application core for Han Dijit's Electron desktop programs: a secure BrowserWindow, the app:// protocol with a strict CSP, a typed and validated IPC contract, single-instance lock, settings and secret stores, a redacting logger and a theme bridge.",
   "author": "Ahmet ilhan <ahmetilhan.dev@gmail.com>",
   "license": "MIT",
