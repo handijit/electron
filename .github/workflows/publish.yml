@@ -1,0 +1,172 @@
+name: Publish to npm
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write # push the release tag and create the GitHub Release
+  id-token: write # signs the npm provenance statement
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false # never let two releases race onto the registry
+
+jobs:
+  # The unit tests mock `electron`; this runs the built package in the real one, on macOS and
+  # Windows. Nothing is released unless it passes.
+  electron-smoke:
+    # A run from any other branch releases nothing, so there is nothing to prove for it here.
+    if: github.ref == 'refs/heads/master'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/electron-smoke.yml
+
+  publish:
+    needs: electron-smoke
+    # A manual run from any other branch must not be able to release.
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      # Dependency lifecycle scripts are an arbitrary-code-execution path during install.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # Publishing a version that already exists is a hard error, so a commit that does not
+      # bump the version skips the release instead of failing it.
+      #
+      # A package that is not on npm yet is released from here as well: the token can create
+      # it, so the first version gets provenance, its tag and its GitHub Release like every
+      # later one.
+      - name: Decide whether this version needs publishing
+        id: check
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$NAME@$VERSION is already on npm; nothing to release."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "verify=false" >> "$GITHUB_OUTPUT"
+            echo "reason=published" >> "$GITHUB_OUTPUT"
+          elif npm view "$NAME" name >/dev/null 2>"$RUNNER_TEMP/npm-view.log"; then
+            echo "$NAME@$VERSION is new; releasing."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "verify=true" >> "$GITHUB_OUTPUT"
+            echo "reason=new-version" >> "$GITHUB_OUTPUT"
+          elif grep -q "E404" "$RUNNER_TEMP/npm-view.log"; then
+            echo "$NAME is not on npm yet; releasing its first version."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "verify=true" >> "$GITHUB_OUTPUT"
+            echo "reason=new-version" >> "$GITHUB_OUTPUT"
+          else
+            # Anything but "not found" is a registry or network failure: do not guess.
+            cat "$RUNNER_TEMP/npm-view.log" >&2
+            exit 1
+          fi
+
+      # A token npm does not accept surfaces otherwise only on the upload, as a 404 that reads
+      # like a missing package, after every check has already run.
+      - name: Check the npm token
+        if: steps.check.outputs.publish == 'true'
+        run: npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+
+      # The CHANGELOG section becomes the GitHub Release note; a release without one stops here,
+      # before anything reaches the registry.
+      - name: Read the release notes from CHANGELOG.md
+        if: steps.check.outputs.verify == 'true'
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          awk -v heading="## [$VERSION]" '
+            index($0, heading) == 1 { found = 1; next }
+            found && (/^## \[/ || /^\[.+\]: /) { exit }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/release-notes.md"; then
+            echo "CHANGELOG.md has no section for $VERSION." >&2
+            exit 1
+          fi
+
+      - name: Lint
+        if: steps.check.outputs.verify == 'true'
+        run: npm run lint
+
+      - name: Type-check
+        if: steps.check.outputs.verify == 'true'
+        run: npm run typecheck
+
+      - name: Test
+        if: steps.check.outputs.verify == 'true'
+        run: npm test
+
+      - name: Build
+        if: steps.check.outputs.verify == 'true'
+        run: npm run build
+
+      - name: Size budget
+        if: steps.check.outputs.verify == 'true'
+        run: npm run size
+
+      - name: Lint the package
+        if: steps.check.outputs.verify == 'true'
+        run: npm run lint:package
+
+      # The tests measure the source; this measures the tarball a consumer installs.
+      - name: Smoke test the packed tarball
+        if: steps.check.outputs.verify == 'true'
+        run: sh ./scripts/smoke-test.sh
+
+      # prepublishOnly re-runs `npm run verify` here as the last gate.
+      - name: Publish
+        if: steps.check.outputs.publish == 'true'
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+
+      - name: Tag the release
+        if: steps.check.outputs.publish == 'true'
+        run: |
+          TAG="v${{ steps.check.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
+
+      - name: Create the GitHub Release
+        if: steps.check.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ steps.check.outputs.version }}"
+          gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
+
+      - name: Summary
+        env:
+          PACKAGE: ${{ steps.check.outputs.name }}@${{ steps.check.outputs.version }}
+          REASON: ${{ steps.check.outputs.reason }}
+        run: |
+          case "$REASON" in
+            new-version)
+              echo "Published $PACKAGE" >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "Skipped: $PACKAGE is already on npm. Bump the version in package.json to release." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+          esac

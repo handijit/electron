@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [master] # master is verified by publish.yml; do not run everything twice
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 24 is the engines floor declared in package.json; 26 is the current Active LTS.
+        node-version: ["24", "26"]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      # Dependency lifecycle scripts are an arbitrary-code-execution path during install.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Size budget
+        run: npm run size
+
+      - name: Lint the package
+        run: npm run lint:package
+
+      # The tests measure the source; this measures the tarball a consumer installs.
+      - name: Smoke test the packed tarball
+        run: sh ./scripts/smoke-test.sh
+
+  # The unit tests mock `electron`; this runs the built package in the real one.
+  electron-smoke:
+    uses: ./.github/workflows/electron-smoke.yml
