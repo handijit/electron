@@ -1,0 +1,10 @@
+{
+  "name": "@handijitcom/electron-react18",
+  "version": "0.0.0",
+  "private": true,
+  "description": "React 18 for the react18 Vitest project: the peer range starts at 18, so the tests run there too.",
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type { Mock } from "vitest";
 
 const { electron } = vi.hoisted(() => ({
   electron: {
@@ -59,7 +60,8 @@ type Setup = {
     read: ReturnType<typeof vi.fn>;
     write: ReturnType<typeof vi.fn>;
   };
-  policyFetch: ReturnType<typeof vi.fn>;
+  // Typed, so an `async` implementation is a promise the mock is meant to return.
+  policyFetch: Mock<() => Promise<Response>>;
   openExternal: ReturnType<typeof vi.fn>;
   states: UpdateState[];
   updater: ReturnType<typeof createUpdater>;
@@ -78,8 +80,8 @@ const setup = (
     ),
   };
   // By default the endpoint never answers, so it changes nothing.
-  const policyFetch = vi.fn(
-    (): Promise<Response> => new Promise<Response>(() => undefined)
+  const policyFetch = vi.fn<() => Promise<Response>>(
+    () => new Promise<Response>(() => undefined)
   );
   const openExternal = vi.fn<(url: string) => Promise<void>>(
     async () => undefined

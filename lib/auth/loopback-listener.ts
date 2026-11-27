@@ -3,7 +3,8 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { loopbackRedirectUri } from "./pkce.helper";
+import { loopbackRedirectUri } from "@handijitcom/api-client/pkce";
+
 import { renderReturnPages, returnPageCsp } from "./return-page";
 import type { ReturnPageLabels } from "./types";
 

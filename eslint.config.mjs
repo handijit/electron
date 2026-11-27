@@ -1,90 +1,62 @@
-import js from "@eslint/js";
-import { defineConfig, globalIgnores } from "eslint/config";
-import prettier from "eslint-config-prettier/flat";
-import tseslint from "typescript-eslint";
+import { library } from "@handijitcom/config/eslint";
 
-// What a page or a sandboxed preload cannot load (section 23). scripts/verify-build.mjs checks
-// the same on the built files.
-const NODE_AND_ELECTRON = [
-  { name: "electron", message: "Page code has no access to Electron." },
-  { name: "zod", message: "Page code checks payloads without Zod." },
+// One layer per entry (section 23): where its code runs decides what it may import, and
+// scripts/verify-build.mjs checks the same on the built files.
+const ENTRIES = [
+  "main",
+  "preload",
+  "renderer",
+  "auth",
+  "auth-react",
+  "update",
+  "update-react",
+  "update-ui",
 ];
-const NODE_PATTERN = {
-  group: ["node:*"],
-  message: "Page and preload code cannot load Node modules.",
-};
-// One entry reaches another by its published name, never by a relative path (section 21).
-const OTHER_ENTRY_FOLDERS = (own) => ({
-  group: [
-    "main",
-    "preload",
-    "renderer",
-    "auth",
-    "auth-react",
-    "update",
-    "update-react",
-    "update-ui",
-  ]
-    .filter((folder) => folder !== own)
-    .flatMap((folder) => [`../${folder}/*`, `../${folder}`]),
+
+// One entry reaches another by its published name, never by a relative path (section 21). The
+// preset seals the other layers' folders; this also refuses `../<entry>`, another entry's barrel.
+const otherEntries = (own) => ({
+  group: ENTRIES.filter((entry) => entry !== own).flatMap((entry) => [
+    `../${entry}`,
+    `../${entry}/*`,
+  ]),
   message:
     "Import another entry by its published name: @handijitcom/electron/<entry>.",
 });
 
-const entryRules = (folder, { isPage = false, isPreload = false } = {}) => ({
-  files: [`lib/${folder}/**/*.ts`, `lib/${folder}/**/*.tsx`],
-  rules: {
-    "no-restricted-imports": [
-      "error",
-      {
-        paths: isPage
-          ? NODE_AND_ELECTRON
-          : isPreload
-            ? [NODE_AND_ELECTRON[1]]
-            : [],
-        patterns: [
-          OTHER_ENTRY_FOLDERS(folder),
-          ...(isPage || isPreload ? [NODE_PATTERN] : []),
-        ],
-      },
-    ],
-  },
+const entry = (name, environment, restrict = []) => ({
+  environment,
+  restrict: [otherEntries(name), ...restrict],
 });
 
-export default defineConfig([
-  globalIgnores(["build/**", "coverage/**"]),
-  {
-    files: ["**/*.ts", "**/*.tsx", "**/*.mts"],
-    extends: [js.configs.recommended, tseslint.configs.recommended],
-    rules: {
-      "@typescript-eslint/consistent-type-imports": "error",
-      "@typescript-eslint/no-explicit-any": "error",
-      "no-console": "error",
+export default [
+  ...library({
+    rootDir: import.meta.dirname,
+    react: ["lib/*-react/**/*.ts", "lib/*-ui/**/*.tsx"],
+    layers: {
+      // Loaded by every process, the sandboxed preload and the page included.
+      shared: {
+        environment: "shared",
+        files: ["lib/index.ts", "lib/shared/**/*.ts"],
+        zod: "forbid",
+      },
+      // The public types name Zod's types; an `import type` leaves nothing at run time.
+      types: { environment: "shared", files: ["lib/types/**/*.ts"] },
+      main: entry("main", "main"),
+      auth: entry("auth", "main"),
+      update: entry("update", "main"),
+      preload: entry("preload", "preload"),
+      renderer: entry("renderer", "renderer"),
+      "auth-react": entry("auth-react", "renderer"),
+      "update-react": entry("update-react", "renderer", [
+        {
+          group: ["@handijitcom/ui", "@handijitcom/ui/*"],
+          message: "The hook entry stays UI-free; components go in update-ui.",
+        },
+      ]),
+      "update-ui": entry("update-ui", "renderer"),
     },
-  },
-  {
-    // The public contract must not be a side effect of type inference.
-    files: ["lib/**/*.ts", "lib/**/*.tsx"],
-    rules: { "@typescript-eslint/explicit-module-boundary-types": "error" },
-  },
-  entryRules("main"),
-  entryRules("auth"),
-  entryRules("update"),
-  entryRules("preload", { isPreload: true }),
-  entryRules("renderer", { isPage: true }),
-  entryRules("auth-react", { isPage: true }),
-  entryRules("update-react", { isPage: true }),
-  entryRules("update-ui", { isPage: true }),
-  {
-    // Shared code is loaded by every process, the sandboxed preload and the page included.
-    files: ["lib/shared/**/*.ts", "lib/index.ts"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        { paths: NODE_AND_ELECTRON, patterns: [NODE_PATTERN] },
-      ],
-    },
-  },
+  }),
   {
     // The logger is the single place of the package that prints, and only to a developer's
     // terminal.
@@ -93,8 +65,6 @@ export default defineConfig([
   },
   {
     files: ["scripts/**/*.mjs"],
-    languageOptions: { globals: { console: "readonly", process: "readonly" } },
     rules: { "no-console": "off" },
   },
-  prettier,
-]);
+];

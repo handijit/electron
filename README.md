@@ -10,33 +10,37 @@ with a minimum-version gate.
 - **One entry per process.** Each entry imports only what its process can load; a build check
   (`scripts/verify-build.mjs`) reads the built files and fails otherwise. The page entries never
   touch `electron`, `node:*` or Zod; the preload entry requires `electron` and nothing else.
-- **No runtime dependency.** `electron` and `zod` are peers; `react`, `@handijitcom/ui` and
-  `electron-updater` are optional peers of the entries that use them.
+- **No runtime dependency.** `electron` and `zod` are peers; `@handijitcom/api-client` (PKCE
+  and version rules), `react`, `@handijitcom/ui` and `electron-updater` are optional peers of
+  the entries that use them.
 - **Backend-agnostic.** The sign-in speaks OAuth 2.0 by default and every endpoint, request and
   answer is an option; the update policy is a URL you give.
 - **ES modules and CommonJS**, with types for both.
 
 ## Entries
 
-| Entry                                | Runs in | Peers it needs                           | What                                                                                    |
-| ------------------------------------ | ------- | ---------------------------------------- | --------------------------------------------------------------------------------------- |
-| `@handijitcom/electron`              | any     | —                                        | `defineContract`, channel lists, constants, guards, types                               |
-| `@handijitcom/electron/main`         | main    | `electron`, `zod`                        | `startApp` and every piece of it, stores, logger, theme, `listPrinters`/`printSilently` |
-| `@handijitcom/electron/preload`      | preload | `electron`                               | `exposeBridge`, `withUpdateChannels`, `UPDATE_CHANNELS`, `AUTH_CHANNELS`                |
-| `@handijitcom/electron/renderer`     | page    | —                                        | `createClient`, `log`, theme, `updateClient`, `getAuthStore`                            |
-| `@handijitcom/electron/auth`         | main    | `electron`, `zod`                        | `createAuth`, `authContract`                                                            |
-| `@handijitcom/electron/auth-react`   | page    | `react`                                  | `useAuth`                                                                               |
-| `@handijitcom/electron/update`       | main    | `electron`, `zod` (+ `electron-updater`) | `createUpdater`, `registerUpdateIpc`, `updateContract`                                  |
-| `@handijitcom/electron/update-react` | page    | `react`                                  | `useUpdate`                                                                             |
-| `@handijitcom/electron/update-ui`    | page    | `react`, `@handijitcom/ui`               | `UpdateButton`, `UpdateGate` (+ `@handijitcom/electron/styles.css`)                     |
+| Entry                                | Runs in | Peers it needs                                                      | What                                                                                    |
+| ------------------------------------ | ------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `@handijitcom/electron`              | any     | —                                                                   | `defineContract`, channel lists, constants, guards, types                               |
+| `@handijitcom/electron/main`         | main    | `electron`, `zod`                                                   | `startApp` and every piece of it, stores, logger, theme, `listPrinters`/`printSilently` |
+| `@handijitcom/electron/preload`      | preload | `electron`                                                          | `exposeBridge`, `withUpdateChannels`, `UPDATE_CHANNELS`, `AUTH_CHANNELS`                |
+| `@handijitcom/electron/renderer`     | page    | —                                                                   | `createClient`, `log`, theme, `updateClient`, `getAuthStore`                            |
+| `@handijitcom/electron/auth`         | main    | `electron`, `zod`, `@handijitcom/api-client`                        | `createAuth`, `authContract`                                                            |
+| `@handijitcom/electron/auth-react`   | page    | `react`                                                             | `useAuth`                                                                               |
+| `@handijitcom/electron/update`       | main    | `electron`, `zod`, `@handijitcom/api-client` (+ `electron-updater`) | `createUpdater`, `registerUpdateIpc`, `updateContract`                                  |
+| `@handijitcom/electron/update-react` | page    | `react`                                                             | `useUpdate`                                                                             |
+| `@handijitcom/electron/update-ui`    | page    | `react`, `@handijitcom/ui`                                          | `UpdateButton`, `UpdateGate` (+ `@handijitcom/electron/styles.css`)                     |
 
-Peer ranges: `electron >=43.0.0 <46.0.0`, `zod ^4`, `electron-updater ^6.8`, `react >=18`,
-`@handijitcom/ui ^3`. The updater never imports `electron-updater`: you pass its `autoUpdater`
-in. Node 24 or newer for the tooling.
+Peer ranges: `electron >=43.0.0 <46.0.0`, `zod ^4`, `@handijitcom/api-client ^1`,
+`electron-updater ^6.8`, `react >=18` (tested on 18 and 19), `@handijitcom/ui ^3`.
+`@handijitcom/api-client` is optional for npm, but `/auth` and `/update` import its `/pkce` and
+`/version` entries: install it when you use either. The updater never imports
+`electron-updater`: you pass its `autoUpdater` in. Node 24 or newer for the tooling.
 
 ```sh
 npm install @handijitcom/electron zod
 npm install --save-dev electron
+npm install @handijitcom/api-client               # for /auth and /update
 npm install electron-updater                       # for /update
 npm install react react-dom @handijitcom/ui        # for /auth-react, /update-react, /update-ui
 ```
@@ -179,9 +183,10 @@ detail }`; only a programming error (an empty `deviceName`, `copies` below 1) th
 
 The program never asks for a password: it opens the authorization page in the system browser,
 listens on `127.0.0.1` at a port the operating system picks, receives the code (RFC 8252 with
-PKCE S256), exchanges it, keeps the refresh token in the operating system's secret store
-(`safeStorage`) and gives the rest of main an authenticated `fetch`. Tokens never leave main:
-neither the contract nor the state has a field for one.
+PKCE S256; verifier, challenge and `state` come from `@handijitcom/api-client/pkce`), exchanges
+it, keeps the refresh token in the operating system's secret store (`safeStorage`) and gives the
+rest of main an authenticated `fetch`. Tokens never leave main: neither the contract nor the
+state has a field for one.
 
 ```ts
 // src/shared/contract.ts
@@ -407,6 +412,7 @@ tokens; `useUpdate()` gives a program with its own design the same state.
 | `@handijit/electron-update/preload\|/renderer\|/react\|/ui`        | `@handijitcom/electron/preload`, `/renderer`, `/update-react`, `/update-ui`                                             |
 | `@handijit/electron-update/styles.css`                             | `@handijitcom/electron/styles.css` (needs `@handijitcom/ui` 3 tokens)                                                   |
 | `onCorrupt(backupPath: string)`                                    | `onCorrupt(backupPath: string \| null)`                                                                                 |
+| `@handijit/core` (PKCE and version helpers)                        | `@handijitcom/api-client` ^1, an optional peer of `/auth` and `/update`                                                 |
 
 ## Development
 
@@ -417,7 +423,13 @@ npm run verify            # lint + prettier, typecheck, unit tests (100% coverag
 
 The tests are unit tests only (`vi.mock("electron")`, jsdom and Testing Library for the page
 entries); there is no real-Electron or browser test in this package. Behaviour the mocks cannot
-know is measured by the programs that use it.
+know is measured by the programs that use it. The page tests run twice, on React 19 and on
+React 18 from the private `react18/` workspace, since the peer range starts at 18.
+
+ESLint, Prettier, the TypeScript base and the Vitest preset come from `@handijitcom/config`
+(the library preset, with one layer per entry in `eslint.config.mjs`). CI runs `verify` and the
+tarball smoke test on Node 24 (the engines floor) and 26 (the Active LTS) for every pull request
+and every push to a branch other than `master`.
 
 ## Releasing
 

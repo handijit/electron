@@ -3,10 +3,10 @@ import { createServer } from "node:net";
 import { app, net, shell } from "electron";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { codeChallengeOf } from "@handijitcom/api-client/pkce";
 import { createSecretStore } from "@handijitcom/electron/main";
 
 import createAuth from "../../lib/auth/create-auth";
-import { codeChallengeOf } from "../../lib/auth/pkce.helper";
 import { SESSION_SECRET_NAME } from "../../lib/auth/session-vault";
 import type { Auth, AuthOptions } from "../../lib/auth/types";
 import type { FetchLike } from "../../lib/shared/fetch-like.type";
@@ -304,9 +304,9 @@ describe("signIn", () => {
     expect(exchange.get("code")).toBe("the-code");
     expect(exchange.get("redirect_uri")).toBe(query.get("redirect_uri"));
     expect(exchange.get("client_id")).toBe("desktop-app");
-    expect(codeChallengeOf(exchange.get("code_verifier") as string)).toBe(
-      query.get("code_challenge")
-    );
+    await expect(
+      codeChallengeOf(exchange.get("code_verifier") as string)
+    ).resolves.toBe(query.get("code_challenge"));
 
     expect(onCallback).toHaveBeenCalledTimes(1);
     expect(states.map((state) => state.status)).toEqual([

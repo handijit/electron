@@ -1,4 +1,8 @@
-import { evaluateUpdatePolicy, isVersion } from "../shared/version.helper";
+import {
+  evaluateUpdatePolicy,
+  isVersion,
+} from "@handijitcom/api-client/version";
+
 import type { UpdatePolicyState } from "../types";
 import type { StoredPolicy } from "./types";
 
@@ -54,7 +58,11 @@ const evaluateStoredPolicy = ({
     };
   }
 
-  const status = evaluateUpdatePolicy(currentVersion, stored);
+  // api-client reads an absent floor as `undefined`; this package stores it as `null`.
+  const status = evaluateUpdatePolicy(currentVersion, {
+    latestVersion: stored.latestVersion,
+    minSupportedVersion: stored.minSupportedVersion ?? undefined,
+  });
   const isFresh = Math.abs(now - stored.fetchedAt) <= requiredTtlMs;
 
   return {

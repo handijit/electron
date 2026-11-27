@@ -1,3 +1,8 @@
+import {
+  codeChallengeOf,
+  createCodeVerifier,
+  createState,
+} from "@handijitcom/api-client/pkce";
 import { createSecretStore } from "@handijitcom/electron/main";
 import { app, net, shell } from "electron";
 
@@ -17,11 +22,6 @@ import type {
 } from "../types";
 import startLoopbackListener from "./loopback-listener";
 import type { LoopbackListener } from "./loopback-listener";
-import {
-  codeChallengeOf,
-  createCodeVerifier,
-  createState,
-} from "./pkce.helper";
 import reasonOf from "./reason-of.helper";
 import createSessionVault from "./session-vault";
 import type { SessionVault } from "./session-vault";
@@ -434,6 +434,7 @@ const createAuth = (options: AuthOptions): Auth => {
     setState({ ...SIGNED_OUT_STATE, status: "signing-in" });
 
     const codeVerifier = createCodeVerifier();
+    const codeChallenge = await codeChallengeOf(codeVerifier);
     const attemptState = createState();
     let current: LoopbackListener;
     try {
@@ -454,11 +455,7 @@ const createAuth = (options: AuthOptions): Auth => {
 
     const waited = await waitForCode(
       current,
-      buildAuthorizeUrl(
-        codeChallengeOf(codeVerifier),
-        current.redirectUri,
-        attemptState
-      )
+      buildAuthorizeUrl(codeChallenge, current.redirectUri, attemptState)
     );
     if (typeof waited === "string") {
       await current.close();

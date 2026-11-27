@@ -1,39 +1,62 @@
-# Han Dijit standard CI (identical in every @handijitcom package).
+# Han Dijit standard CI (NPM_PACKAGE.md section 14), with the Node matrix: the engines floor and
+# the current Active LTS.
 name: CI
 
-# Pull requests only. A push to master is gated by `publish.yml`, which runs the same commands
-# before anything reaches the registry.
+# Every pull request and every push to a branch other than master. A push to master is gated by
+# `publish.yml`, which runs the same commands before anything reaches the registry.
 on:
   pull_request:
+  push:
+    branches-ignore: [master]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # The engines floor (package.json) and the current Active LTS.
+        node-version: ["24", "26"]
 
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: ${{ matrix.node-version }}
           cache: npm
 
-      # Dependency lifecycle scripts are an arbitrary-code-execution path during install.
+      # Dependency lifecycle scripts are an arbitrary-code-execution path during install. The
+      # tests mock `electron`, so its binary is not needed.
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Format
-        run: npm run format:check --if-present
-
-      # The one gate each package defines: typecheck, lint, tests, build, size...
+      # Lint (ESLint and Prettier), typecheck, tests on React 19 and 18 with 100 % coverage,
+      # build with the build checks, size budgets, publint and attw.
       - name: Verify
         run: npm run verify
+
+      # The gate measures the source; this installs the tarball a consumer gets and loads the
+      # entries plain Node can load (the others need Electron or React), as ESM and CommonJS.
+      - name: Smoke test the packed tarball
+        env:
+          NAME: "@handijitcom/electron"
+        run: |
+          npm pack
+          TARBALL="$(ls "$GITHUB_WORKSPACE"/*.tgz)"
+          cd "$(mktemp -d)"
+          npm init -y >/dev/null
+          npm install --ignore-scripts "$TARBALL"
+          for ENTRY in "$NAME" "$NAME/renderer"; do
+            ENTRY="$ENTRY" node --input-type=module -e "await import(process.env.ENTRY); console.log(process.env.ENTRY + ' ESM OK')"
+            ENTRY="$ENTRY" node -e "require(process.env.ENTRY); console.log(process.env.ENTRY + ' CJS OK')"
+          done

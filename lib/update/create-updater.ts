@@ -1,8 +1,8 @@
 import { homedir } from "node:os";
 
+import { compareVersions, isVersion } from "@handijitcom/api-client/version";
 import { app, net, shell } from "electron";
 
-import { compareVersions, isVersion } from "../shared/version.helper";
 import type {
   UnsupportedReason,
   UpdateActivity,

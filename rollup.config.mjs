@@ -28,6 +28,7 @@ const isExternal = (id) =>
   id.startsWith("react/") ||
   id === "@handijitcom/ui" ||
   id.startsWith("@handijitcom/ui/") ||
+  id.startsWith("@handijitcom/api-client/") ||
   id === "@handijitcom/electron" ||
   id.startsWith("@handijitcom/electron/") ||
   id.startsWith("node:");

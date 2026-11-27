@@ -1,4 +1,5 @@
-import { isVersion } from "../shared/version.helper";
+import { isVersion } from "@handijitcom/api-client/version";
+
 import type { UpdateInfo, UpdateProgress } from "../types";
 
 const MAX_NOTES_LENGTH = 4000;
