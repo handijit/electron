@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    // Electron 43+ (Chromium and its Node) and the engines floor run ES2023 natively; nothing to
+    // downlevel.
+    "target": "ES2023",
+    "module": "ESNext",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "moduleResolution": "bundler",
+    // The main-process entries use Node; the renderer entries are kept off it by ESLint and by
+    // scripts/verify-build.mjs, which reads what each built entry imports.
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "noEmit": false,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "useUnknownInCatchVariables": true,
+
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+
+    // One entry reaches another by the published name (section 21), never by a relative path;
+    // in the source tree that name points at the entry's barrel. The build keeps it external.
+    "paths": {
+      "@handijitcom/electron": ["./lib/index.ts"],
+      "@handijitcom/electron/*": ["./lib/*.ts", "./lib/*.tsx"]
+    }
+  },
+  "include": ["lib"],
+  "exclude": ["node_modules", "__tests__", "build"]
+}

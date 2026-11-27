@@ -1,0 +1,151 @@
+# Han Dijit standard release (identical in every @handijitcom package).
+# A push to master that carries a version not yet on npm verifies, publishes with provenance,
+# tags `v<version>` and creates the GitHub Release. Any other push is a no-op.
+name: Publish to npm
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write # push the release tag and create the GitHub Release
+  id-token: write # signs the npm provenance statement
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false # never let two releases race onto the registry
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # skip: this version is already on npm. publish: new version, or the package's first release.
+      - name: Decide whether this version needs publishing
+        id: check
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$NAME@$VERSION is already on npm; nothing to release."
+            echo "mode=skip" >> "$GITHUB_OUTPUT"
+          elif npm view "$NAME" name >/dev/null 2>"$RUNNER_TEMP/npm-view.log"; then
+            echo "$NAME@$VERSION is new; releasing."
+            echo "mode=publish" >> "$GITHUB_OUTPUT"
+          elif grep -q "E404" "$RUNNER_TEMP/npm-view.log"; then
+            echo "$NAME is not on npm yet; releasing its first version."
+            echo "mode=publish" >> "$GITHUB_OUTPUT"
+          else
+            # A registry outage must not be mistaken for a package that does not exist.
+            cat "$RUNNER_TEMP/npm-view.log" >&2
+            exit 1
+          fi
+
+      # A token npm does not accept otherwise surfaces only on the upload, as a misleading 404.
+      - name: Check the npm token
+        if: steps.check.outputs.mode == 'publish'
+        run: npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+
+      # The tag must be free, or the release would end half done after the upload.
+      - name: Check the release tag is free
+        if: steps.check.outputs.mode == 'publish'
+        run: |
+          TAG="v${{ steps.check.outputs.version }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists on origin." >&2
+            exit 1
+          fi
+
+      - name: Read the release notes from CHANGELOG.md
+        if: steps.check.outputs.mode == 'publish'
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          awk -v heading="## [$VERSION]" '
+            index($0, heading) == 1 { found = 1; next }
+            found && (/^## \[/ || /^\[.+\]: /) { exit }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/release-notes.md"; then
+            echo "CHANGELOG.md has no section for $VERSION." >&2
+            exit 1
+          fi
+
+      - name: Format
+        if: steps.check.outputs.mode == 'publish'
+        run: npm run format:check --if-present
+
+      - name: Verify
+        if: steps.check.outputs.mode == 'publish'
+        run: npm run verify
+
+      # The gate measures the source; this installs the tarball a consumer gets and loads the
+      # entries plain Node can load (the others need Electron or React), as ESM and CommonJS.
+      - name: Smoke test the packed tarball
+        if: steps.check.outputs.mode == 'publish'
+        env:
+          NAME: ${{ steps.check.outputs.name }}
+        run: |
+          npm pack
+          TARBALL="$(ls "$GITHUB_WORKSPACE"/*.tgz)"
+          cd "$(mktemp -d)"
+          npm init -y >/dev/null
+          npm install --ignore-scripts "$TARBALL"
+          for ENTRY in "$NAME" "$NAME/renderer"; do
+            ENTRY="$ENTRY" node --input-type=module -e "await import(process.env.ENTRY); console.log(process.env.ENTRY + ' ESM OK')"
+            ENTRY="$ENTRY" node -e "require(process.env.ENTRY); console.log(process.env.ENTRY + ' CJS OK')"
+          done
+
+      - name: Publish
+        if: steps.check.outputs.mode == 'publish'
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+
+      - name: Tag the release
+        if: steps.check.outputs.mode == 'publish'
+        run: |
+          TAG="v${{ steps.check.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
+
+      - name: Create the GitHub Release
+        if: steps.check.outputs.mode == 'publish'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ steps.check.outputs.version }}"
+          gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
+
+      - name: Summary
+        env:
+          PACKAGE: ${{ steps.check.outputs.name }}@${{ steps.check.outputs.version }}
+          MODE: ${{ steps.check.outputs.mode }}
+        run: |
+          if [ "$MODE" = "publish" ]; then
+            echo "Published $PACKAGE" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Skipped: $PACKAGE is already on npm. Bump the version in package.json to release." >> "$GITHUB_STEP_SUMMARY"
+          fi

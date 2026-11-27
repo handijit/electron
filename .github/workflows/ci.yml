@@ -1,0 +1,39 @@
+# Han Dijit standard CI (identical in every @handijitcom package).
+name: CI
+
+# Pull requests only. A push to master is gated by `publish.yml`, which runs the same commands
+# before anything reaches the registry.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+
+      # Dependency lifecycle scripts are an arbitrary-code-execution path during install.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Format
+        run: npm run format:check --if-present
+
+      # The one gate each package defines: typecheck, lint, tests, build, size...
+      - name: Verify
+        run: npm run verify

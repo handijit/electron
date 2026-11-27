@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+
+rollup -c -w

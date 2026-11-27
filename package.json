@@ -1,0 +1,245 @@
+{
+  "name": "@handijitcom/electron",
+  "version": "1.0.0",
+  "description": "The core of an Electron desktop program in one dependency-free package: secure windows, the app:// protocol with a strict CSP, a typed Zod IPC contract, settings and secret stores, a redacting logger, silent printing, browser sign-in with RFC 8252 loopback and PKCE, and an electron-updater state machine with a minimum-version gate.",
+  "author": "Ahmet ilhan <ahmetilhan.dev@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/handijit/electron.git"
+  },
+  "homepage": "https://github.com/handijit/electron#readme",
+  "bugs": {
+    "url": "https://github.com/handijit/electron/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./build/index.cjs",
+  "module": "./build/index.mjs",
+  "types": "./build/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./build/index.d.mts",
+        "default": "./build/index.mjs"
+      },
+      "require": {
+        "types": "./build/index.d.ts",
+        "default": "./build/index.cjs"
+      },
+      "default": "./build/index.mjs"
+    },
+    "./main": {
+      "import": {
+        "types": "./build/main.d.mts",
+        "default": "./build/main.mjs"
+      },
+      "require": {
+        "types": "./build/main.d.ts",
+        "default": "./build/main.cjs"
+      },
+      "default": "./build/main.mjs"
+    },
+    "./preload": {
+      "import": {
+        "types": "./build/preload.d.mts",
+        "default": "./build/preload.mjs"
+      },
+      "require": {
+        "types": "./build/preload.d.ts",
+        "default": "./build/preload.cjs"
+      },
+      "default": "./build/preload.mjs"
+    },
+    "./renderer": {
+      "import": {
+        "types": "./build/renderer.d.mts",
+        "default": "./build/renderer.mjs"
+      },
+      "require": {
+        "types": "./build/renderer.d.ts",
+        "default": "./build/renderer.cjs"
+      },
+      "default": "./build/renderer.mjs"
+    },
+    "./auth": {
+      "import": {
+        "types": "./build/auth.d.mts",
+        "default": "./build/auth.mjs"
+      },
+      "require": {
+        "types": "./build/auth.d.ts",
+        "default": "./build/auth.cjs"
+      },
+      "default": "./build/auth.mjs"
+    },
+    "./auth-react": {
+      "import": {
+        "types": "./build/auth-react.d.mts",
+        "default": "./build/auth-react.mjs"
+      },
+      "require": {
+        "types": "./build/auth-react.d.ts",
+        "default": "./build/auth-react.cjs"
+      },
+      "default": "./build/auth-react.mjs"
+    },
+    "./update": {
+      "import": {
+        "types": "./build/update.d.mts",
+        "default": "./build/update.mjs"
+      },
+      "require": {
+        "types": "./build/update.d.ts",
+        "default": "./build/update.cjs"
+      },
+      "default": "./build/update.mjs"
+    },
+    "./update-react": {
+      "import": {
+        "types": "./build/update-react.d.mts",
+        "default": "./build/update-react.mjs"
+      },
+      "require": {
+        "types": "./build/update-react.d.ts",
+        "default": "./build/update-react.cjs"
+      },
+      "default": "./build/update-react.mjs"
+    },
+    "./update-ui": {
+      "import": {
+        "types": "./build/update-ui.d.mts",
+        "default": "./build/update-ui.mjs"
+      },
+      "require": {
+        "types": "./build/update-ui.d.ts",
+        "default": "./build/update-ui.cjs"
+      },
+      "default": "./build/update-ui.mjs"
+    },
+    "./styles.css": "./build/styles.css",
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "main": [
+        "./build/main.d.ts"
+      ],
+      "preload": [
+        "./build/preload.d.ts"
+      ],
+      "renderer": [
+        "./build/renderer.d.ts"
+      ],
+      "auth": [
+        "./build/auth.d.ts"
+      ],
+      "auth-react": [
+        "./build/auth-react.d.ts"
+      ],
+      "update": [
+        "./build/update.d.ts"
+      ],
+      "update-react": [
+        "./build/update-react.d.ts"
+      ],
+      "update-ui": [
+        "./build/update-ui.d.ts"
+      ]
+    }
+  },
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "files": [
+    "build",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "sh ./scripts/prod-build.sh",
+    "dev": "sh ./scripts/dev-build.sh",
+    "lint": "eslint . --max-warnings 0 && prettier --check .",
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run --coverage",
+    "size": "node ./scripts/report-size.mjs",
+    "lint:package": "publint && attw --pack . --exclude-entrypoints styles.css",
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run build && npm run size && npm run lint:package",
+    "prepublishOnly": "npm run verify"
+  },
+  "keywords": [
+    "electron",
+    "electron-security",
+    "ipc",
+    "typed-ipc",
+    "contextbridge",
+    "content-security-policy",
+    "safestorage",
+    "logger",
+    "silent-print",
+    "label-printer",
+    "oauth",
+    "pkce",
+    "rfc8252",
+    "loopback",
+    "electron-updater",
+    "auto-update",
+    "minimum-version",
+    "react"
+  ],
+  "peerDependencies": {
+    "@handijitcom/ui": "^3.0.0",
+    "electron": ">=43.0.0 <46.0.0",
+    "electron-updater": "^6.8.0",
+    "react": ">=18",
+    "zod": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@handijitcom/ui": {
+      "optional": true
+    },
+    "electron-updater": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@eslint/js": "^10.0.1",
+    "@handijitcom/ui": "^3.0.0",
+    "@handijitcom/utils": "^1.0.0",
+    "@rollup/plugin-typescript": "^12.3.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^24.9.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "@vitest/coverage-v8": "^5.1.0",
+    "electron": "^45.2.3",
+    "electron-updater": "^6.8.11",
+    "eslint": "^10.14.0",
+    "eslint-config-prettier": "^10.1.8",
+    "jsdom": "^31.0.0",
+    "prettier": "^3.9.10",
+    "publint": "^0.3.25",
+    "react": "^19.3.1",
+    "react-bootstrap-icons": "^1.11.6",
+    "react-dom": "^19.3.1",
+    "rollup": "^4.68.2",
+    "rollup-plugin-dts": "^6.5.1",
+    "tslib": "^2.9.1",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^5.1.0",
+    "zod": "^4.6.7"
+  }
+}
